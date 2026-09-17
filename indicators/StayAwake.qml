@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -7,8 +8,52 @@ BarIndicator {
   id: root
 
   readonly property var idleService: bar?.shell?.serviceFor("azterisk.idle") || bar?.shell?.firstPartyServiceFor("omarchy.idle")
+  readonly property string home: Quickshell.env("HOME") || ""
+  readonly property string shellConfigPath: home + "/.config/omarchy/shell.json"
 
   property bool popupOpen: false
+  property string localStayAwakeMode: ""
+  property int localScreensaverSeconds: -1
+  property int localLockSeconds: -1
+  property var parsedConfig: ({})
+
+  FileView {
+    id: shellConfigFile
+    path: root.shellConfigPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.reloadConfig()
+    onFileChanged: reload()
+  }
+
+  function reloadConfig() {
+    try {
+      var parsed = JSON.parse(shellConfigFile.text())
+      root.parsedConfig = parsed && parsed.idle ? parsed.idle : {}
+      if (root.parsedConfig.stayAwakeMode !== undefined && root.localStayAwakeMode === root.parsedConfig.stayAwakeMode) {
+        root.localStayAwakeMode = ""
+      }
+      if (root.parsedConfig.screensaver !== undefined && root.localScreensaverSeconds === Number(root.parsedConfig.screensaver)) {
+        root.localScreensaverSeconds = -1
+      }
+      if (root.parsedConfig.lock !== undefined && root.localLockSeconds === Number(root.parsedConfig.lock)) {
+        root.localLockSeconds = -1
+      }
+    } catch (e) {
+      root.parsedConfig = {}
+    }
+  }
+
+  readonly property string configStayAwakeMode: (parsedConfig && parsedConfig.stayAwakeMode) ? String(parsedConfig.stayAwakeMode) : "screensaver-only"
+  readonly property int configScreensaverSeconds: (parsedConfig && parsedConfig.screensaver !== undefined) ? Number(parsedConfig.screensaver) : 150
+  readonly property int configLockSeconds: (parsedConfig && parsedConfig.lock !== undefined) ? Number(parsedConfig.lock) : 600
+
+  readonly property string currentStayAwakeMode: localStayAwakeMode !== "" ? localStayAwakeMode : configStayAwakeMode
+  readonly property int currentScreensaverSeconds: localScreensaverSeconds !== -1 ? localScreensaverSeconds : configScreensaverSeconds
+  readonly property int currentLockSeconds: localLockSeconds !== -1 ? localLockSeconds : configLockSeconds
+  readonly property bool screensaverEnabled: currentScreensaverSeconds > 0
+  readonly property bool lockEnabled: currentLockSeconds > 0
+  readonly property bool allowsScreensaver: currentStayAwakeMode !== "full" && currentStayAwakeMode !== "inhibit-all"
 
   function close() {
     root.popupOpen = false
@@ -17,13 +62,47 @@ BarIndicator {
   active: idleService ? idleService.stayAwake : false
   activeText: "󰅶"
   inactiveText: "󰅶"
-  activeTooltipText: idleService && idleService.stayAwakeAllowsScreensaver
+  activeTooltipText: root.allowsScreensaver
     ? "Stay Awake: Active (Screensaver Enabled, Lock Inactive)\nLeft-click: Toggle off | Right-click: Settings"
     : "Stay Awake: Active (Screensaver & Lock Inactive)\nLeft-click: Toggle off | Right-click: Settings"
   inactiveTooltipText: "Stay Awake: Inactive (Normal Idle & Lock)\nLeft-click: Toggle on | Right-click: Settings"
 
   function toggle() {
-    if (root.idleService) root.idleService.setIdleEnabled(root.active)
+    if (root.idleService && typeof root.idleService.setIdleEnabled === "function") {
+      root.idleService.setIdleEnabled(root.active)
+    } else if (root.bar) {
+      root.bar.run("omarchy-shell idle toggle")
+    }
+  }
+
+  function setStayAwakeMode(mode) {
+    root.localStayAwakeMode = mode
+    if (root.idleService && typeof root.idleService.setStayAwakeMode === "function") {
+      root.idleService.setStayAwakeMode(mode)
+    }
+    if (root.bar) {
+      root.bar.run("omarchy-shell idle setStayAwakeMode " + mode)
+    }
+  }
+
+  function setScreensaverTimeout(seconds) {
+    root.localScreensaverSeconds = seconds
+    if (root.idleService && typeof root.idleService.setScreensaverTimeout === "function") {
+      root.idleService.setScreensaverTimeout(seconds)
+    }
+    if (root.bar) {
+      root.bar.run("omarchy-shell idle setScreensaver " + seconds)
+    }
+  }
+
+  function setLockTimeout(seconds) {
+    root.localLockSeconds = seconds
+    if (root.idleService && typeof root.idleService.setLockTimeout === "function") {
+      root.idleService.setLockTimeout(seconds)
+    }
+    if (root.bar) {
+      root.bar.run("omarchy-shell idle setLock " + seconds)
+    }
   }
 
   onPressed: function(button) {
@@ -135,8 +214,8 @@ BarIndicator {
               iconText: "󱄄"
               tooltipText: "Show screensaver on idle, but never lock PC"
               bordered: true
-              selected: root.idleService ? root.idleService.stayAwakeMode === "screensaver-only" : true
-              onClicked: if (root.idleService) root.idleService.setStayAwakeMode("screensaver-only")
+              selected: root.currentStayAwakeMode === "screensaver-only"
+              onClicked: root.setStayAwakeMode("screensaver-only")
             }
 
             Button {
@@ -145,8 +224,8 @@ BarIndicator {
               iconText: "󰅶"
               tooltipText: "Keep screen completely awake (no screensaver, no lock)"
               bordered: true
-              selected: root.idleService ? root.idleService.stayAwakeMode === "full" : false
-              onClicked: if (root.idleService) root.idleService.setStayAwakeMode("full")
+              selected: root.currentStayAwakeMode === "full" || root.currentStayAwakeMode === "inhibit-all"
+              onClicked: root.setStayAwakeMode("full")
             }
           }
         }
@@ -182,8 +261,8 @@ BarIndicator {
                 text: modelData.label
                 tooltipText: modelData.tooltip
                 bordered: true
-                selected: Boolean(root.idleService && (modelData.value === 0 ? !root.idleService.screensaverEnabled : (root.idleService.screensaverEnabled && root.idleService.screensaverTimeoutSeconds === modelData.value)))
-                onClicked: if (root.idleService) root.idleService.setScreensaverTimeout(modelData.value)
+                selected: modelData.value === 0 ? !root.screensaverEnabled : (root.screensaverEnabled && root.currentScreensaverSeconds === modelData.value)
+                onClicked: root.setScreensaverTimeout(modelData.value)
               }
             }
           }
@@ -220,8 +299,8 @@ BarIndicator {
                 text: modelData.label
                 tooltipText: modelData.tooltip
                 bordered: true
-                selected: Boolean(root.idleService && (modelData.value === 0 ? !root.idleService.lockEnabled : (root.idleService.lockEnabled && root.idleService.lockTimeoutSeconds === modelData.value)))
-                onClicked: if (root.idleService) root.idleService.setLockTimeout(modelData.value)
+                selected: modelData.value === 0 ? !root.lockEnabled : (root.lockEnabled && root.currentLockSeconds === modelData.value)
+                onClicked: root.setLockTimeout(modelData.value)
               }
             }
           }
