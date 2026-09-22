@@ -3,8 +3,9 @@
   "id": "azterisk.indicators",
   "name": "My Indicators",
   "version": "1.0.0",
-  "author": "Omarchy",
-  "description": "Manual state indicators",
+  "author": "Azteriisk",
+  "license": "MIT",
+  "description": "Enhanced modular status indicators bar widget for Omarchy Desktop Shell with integrated Stay Awake & Idle Hub.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "My Indicators",
-    "description": "Manual state indicators",
+    "description": "Enhanced modular status indicators bar widget",
     "category": "Status",
     "allowMultiple": true,
     "schema": [
