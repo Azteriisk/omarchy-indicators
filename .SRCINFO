@@ -1,0 +1,16 @@
+pkgbase = omarchy-indicators-git
+	pkgdesc = Enhanced Status Indicators bar widget for Omarchy Desktop Shell with Stay Awake & Idle integration
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/Azteriisk/omarchy-indicators
+	arch = any
+	license = MIT
+	makedepends = git
+	depends = quickshell
+	depends = omarchy
+	provides = omarchy-indicators
+	conflicts = omarchy-indicators
+	source = omarchy-indicators-git::git+https://github.com/Azteriisk/omarchy-indicators.git#commit=25290b579eb5107140e6e0858c7a0063b656dbb0
+	sha256sums = SKIP
+
+pkgname = omarchy-indicators-git
